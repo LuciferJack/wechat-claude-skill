@@ -11,9 +11,40 @@ macOS 微信自动化 Claude Code Skill。支持发送消息和查看/搜索聊�
 ## 系统要求
 
 - macOS 10.15+
+- Node.js 18+
 - WeChat Desktop（已登录）
-- [wechat-cli](https://github.com/nicognaW/wechat-cli)（已初始化）
-- 终端需要辅助功能权限 + 完全磁盘访问权限
+- 终端需要 **辅助功能权限** + **完全磁盘访问权限**
+- macOS 需 **关闭 SIP**（wechat-cli 初始化需要）
+
+## 依赖
+
+| 依赖 | 用途 | 安装方式 |
+|------|------|----------|
+| [wechat-cli](https://www.npmjs.com/package/@canghe_ai/wechat-cli) | 读取微信本地数据库（聊天记录、联系人等） | `npm install -g @canghe_ai/wechat-cli` |
+| osascript | 执行 AppleScript 发送消息 | macOS 自带 |
+
+## 快速安装
+
+```bash
+# 一键安装（检查环境 + 安装依赖 + 可选安装 skill）
+git clone https://github.com/LuciferJack/wechat-claude-skill.git
+cd wechat-claude-skill
+chmod +x scripts/*.sh
+./scripts/install.sh
+```
+
+或手动安装：
+
+```bash
+# 1. 安装 wechat-cli
+npm install -g @canghe_ai/wechat-cli
+
+# 2. 初始化（需关闭 SIP，首次使用）
+sudo wechat-cli init
+
+# 3. 验证
+wechat-cli sessions --limit 5
+```
 
 ## 安装到 Claude Code
 
