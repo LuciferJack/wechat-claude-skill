@@ -7,6 +7,13 @@ set -e
 TARGET="${1:?用法: $0 <联系人名> <消息内容>}"
 MESSAGE="${2:?用法: $0 <联系人名> <消息内容>}"
 
+# 防锁屏：唤醒显示器 + 阻止休眠
+caffeinate -u -t 2 2>/dev/null
+sleep 2
+caffeinate -dims -w $$ &
+CAFFEINATE_PID=$!
+trap "kill $CAFFEINATE_PID 2>/dev/null" EXIT
+
 osascript <<APPLESCRIPT
 tell application "WeChat" to activate
 delay 3

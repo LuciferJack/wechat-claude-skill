@@ -105,6 +105,30 @@ APPLESCRIPT
 | `TARGET_NAME` | 联系人名或群聊名（精确匹配优先） |
 | `MESSAGE_CONTENT` | 消息内容，支持中文、emoji、特殊字符 |
 
+### 防锁屏（重要依赖）
+
+发送消息依赖 GUI 事件，**屏幕锁定后无法发送**。发送前必须确保屏幕不会锁定：
+
+```bash
+# 方法 1：发送前唤醒屏幕 + 阻止休眠（推荐）
+caffeinate -u -t 2       # 唤醒显示器
+sleep 2                   # 等待唤醒完成
+caffeinate -dims -w $$ &  # 当前 shell 存活期间阻止休眠
+CAFFEINATE_PID=$!
+
+# ... 执行发送操作 ...
+
+kill $CAFFEINATE_PID 2>/dev/null  # 发送完毕恢复休眠策略
+```
+
+```bash
+# 方法 2：长期保持屏幕常亮（适合批量发送场景）
+caffeinate -dims &
+# 操作完成后 kill 掉 caffeinate 进程
+```
+
+**注意**：`caffeinate` 只能阻止自动锁屏/休眠，如果用户已经手动锁屏（如合盖），需要先解锁才能操作。
+
 ### 注意事项
 
 - **delay 3**（激活后）：必须足够长，确保微信完全前台化
@@ -113,6 +137,7 @@ APPLESCRIPT
 - **tell process "WeChat"**：直接向微信进程发事件，不受窗口遮挡影响
 - 发送期间不要操作鼠标键盘
 - 消息通过剪贴板粘贴，会临时覆盖剪贴板内容
+- **发送前务必先运行 `caffeinate -u -t 2` 唤醒屏幕**
 
 ### 发送多条消息
 
