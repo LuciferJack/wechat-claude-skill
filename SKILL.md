@@ -129,6 +129,13 @@ caffeinate -dims &
 
 **注意**：`caffeinate` 只能阻止自动锁屏/休眠，如果用户已经手动锁屏（如合盖），需要先解锁才能操作。
 
+```bash
+# 方法 3：合盖不休眠（已验证可用，GUI 事件在合盖状态下仍有效）
+/usr/bin/osascript -e 'do shell script "pmset -b disablesleep 1 && pmset -a displaysleep 0" with administrator privileges'
+# 恢复默认：
+# /usr/bin/osascript -e 'do shell script "pmset -b disablesleep 0 && pmset -a displaysleep 2" with administrator privileges'
+```
+
 ### 注意事项
 
 - **delay 3**（激活后）：必须足够长，确保微信完全前台化
