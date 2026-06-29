@@ -3,7 +3,7 @@ name: wechat-mac
 description: >-
   macOS 微信自动化技能。支持发送消息（AppleScript）和查看/搜索聊天记录（wechat-cli）。
   覆盖：发消息、查历史、搜索、联系人、未读、群成员、导出等全部操作。
-version: 1.0.0
+version: 1.1.0
 author: LuciferJack
 platform: macOS
 requirements:
@@ -46,64 +46,213 @@ macOS 平台微信自动化技能，包含「发送」和「查看」两大能�
 
 通过 AppleScript 向微信进程发送键盘事件，使用 `tell process "WeChat"` 直接定向微信，不依赖窗口坐标。
 
-### 发送流程
+### ⚠️ 防误发核心规则（血泪教训）
 
-向任意联系人或群聊发送文本消息，执行以下 AppleScript：
+**联系人和群聊的搜索结果结构完全不同**，必须区分处理：
 
-```bash
-osascript <<'APPLESCRIPT'
+- **联系人**：两次 Enter（第一次提交搜索，第二次选中第一个结果）
+- **群聊**：搜索后用 Down 键导航，群在下拉列表的"群聊"区域，Enter×2 会选中网页搜索建议，消息会发到上一个聊天窗口
+
+**强制验证流程**：不论联系人还是群聊，选中聊天后必须先截图验证，确认打开了正确的聊天窗口后才能发送消息。绝不跳过验证直接发送。
+
+### 中文文本剪贴板
+
+AppleScript 的 `set the clipboard to` 对含中文引号（如"一生一策"）的文本会语法错误。**必须用 Python 设置剪贴板**：
+
+```python
+import AppKit
+def set_clipboard(text):
+    pb = AppKit.NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
+```
+
+### 模式 A：发送给联系人
+
+适用于：个人联系人（如 文件传输助手、莫靖杰、哈尼昕宝贝）
+
+```python
+#!/usr/bin/env python3
+import subprocess, AppKit, time
+
+def set_clipboard(text):
+    pb = AppKit.NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
+
+def run_applescript(script):
+    subprocess.run(["osascript", "-e", script], check=True)
+
+TARGET = "联系人名"
+MESSAGE = "消息内容"
+
+# Phase 1: 搜索 + 选中联系人
+run_applescript('''
 tell application "WeChat" to activate
 delay 3
-
 tell application "System Events"
     tell process "WeChat"
         set frontmost to true
         delay 0.5
-        
-        -- 清除之前状态
         key code 53
         delay 0.5
-        
-        -- Cmd+F 打开搜索
         keystroke "f" using {command down}
         delay 1
-        
-        -- 粘贴联系人/群名
-        set the clipboard to "TARGET_NAME"
+    end tell
+end tell
+''')
+
+set_clipboard(TARGET)
+time.sleep(0.3)
+
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
         keystroke "v" using {command down}
         delay 1.5
-        
-        -- 第一次 Enter：提交搜索
         keystroke return
         delay 2.5
-        
-        -- 第二次 Enter：选中第一个搜索结果
         keystroke return
         delay 2
-        
-        -- Option+Down/Up：导航到输入框
+    end tell
+end tell
+''')
+
+# Phase 2: 截图验证 — 确认打开了正确的聊天窗口
+subprocess.run(["screencapture", "-x", "/tmp/wechat_verify.png"])
+# ← 必须检查截图，确认窗口标题是目标联系人，再继续
+
+# Phase 3: 导航到输入框 + 发送
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
         key code 125 using {option down}
         key code 126 using {option down}
         delay 0.5
-        
-        -- 粘贴消息内容
-        set the clipboard to "MESSAGE_CONTENT"
+    end tell
+end tell
+''')
+
+set_clipboard(MESSAGE)
+time.sleep(0.3)
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
         keystroke "v" using {command down}
         delay 0.5
-        
-        -- Enter 发送
         keystroke return
     end tell
 end tell
-APPLESCRIPT
+''')
 ```
 
-### 关键参数
+### 模式 B：发送给群聊
 
-| 参数 | 说明 |
-|------|------|
-| `TARGET_NAME` | 联系人名或群聊名（精确匹配优先） |
-| `MESSAGE_CONTENT` | 消息内容，支持中文、emoji、特殊字符 |
+适用于：微信群（如 为教育、搞点事情！）
+
+**关键区别**：搜索下拉列表结构为：搜索网络结果(1条) → 搜索建议(~5条) → 群聊区域。必须用 Down 键跳过前面的项目，导航到群聊结果。
+
+```python
+#!/usr/bin/env python3
+import subprocess, AppKit, time
+
+def set_clipboard(text):
+    pb = AppKit.NSPasteboard.generalPasteboard()
+    pb.clearContents()
+    pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
+
+def run_applescript(script):
+    subprocess.run(["osascript", "-e", script], check=True)
+
+TARGET_SEARCH = "群名关键词"  # 用短关键词，如"搞点事情"而非完整群名
+MESSAGE = "消息内容"
+
+# Phase 1: 搜索
+run_applescript('''
+tell application "WeChat" to activate
+delay 3
+tell application "System Events"
+    tell process "WeChat"
+        set frontmost to true
+        delay 0.5
+        key code 53
+        delay 0.5
+        keystroke "f" using {command down}
+        delay 1
+    end tell
+end tell
+''')
+
+set_clipboard(TARGET_SEARCH)
+time.sleep(0.3)
+
+# Phase 2: Down×7 导航到群聊结果（跳过网页搜索 + 搜索建议）
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
+        keystroke "v" using {command down}
+        delay 2.5
+
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.1
+        key code 125
+        delay 0.3
+
+        keystroke return
+        delay 2
+    end tell
+end tell
+''')
+
+# Phase 3: 截图验证 — 必须确认窗口标题是目标群名
+subprocess.run(["screencapture", "-x", "/tmp/wechat_verify.png"])
+# ← 必须检查截图，确认是正确的群聊，再继续！
+# 如果不是目标群，调整 Down 次数重试，绝不盲发
+
+# Phase 4: 导航到输入框 + 发送
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
+        key code 125 using {option down}
+        key code 126 using {option down}
+        delay 0.5
+    end tell
+end tell
+''')
+
+set_clipboard(MESSAGE)
+time.sleep(0.3)
+run_applescript('''
+tell application "System Events"
+    tell process "WeChat"
+        keystroke "v" using {command down}
+        delay 0.5
+        keystroke return
+    end tell
+end tell
+''')
+```
+
+**Down 次数调整**：默认 7 次（跳过 1 条网页搜索 + 5 条搜索建议 + 群聊 header）。如果群聊不在第一个，增加次数。发送前必须截图验证。
+
+### 判断联系人 vs 群聊
+
+不确定目标是个人还是群时，先查：
+
+```bash
+wechat-cli contacts --query "名字"    # 有结果 → 联系人，用模式 A
+wechat-cli members "群名"             # 有结果 → 群聊，用模式 B
+```
 
 ### 防锁屏（重要依赖）
 
@@ -122,15 +271,7 @@ kill $CAFFEINATE_PID 2>/dev/null  # 发送完毕恢复休眠策略
 ```
 
 ```bash
-# 方法 2：长期保持屏幕常亮（适合批量发送场景）
-caffeinate -dims &
-# 操作完成后 kill 掉 caffeinate 进程
-```
-
-**注意**：`caffeinate` 只能阻止自动锁屏/休眠，如果用户已经手动锁屏（如合盖），需要先解锁才能操作。
-
-```bash
-# 方法 3：合盖不休眠（已验证可用，GUI 事件在合盖状态下仍有效）
+# 方法 2：合盖不休眠（已验证可用，GUI 事件在合盖状态下仍有效）
 /usr/bin/osascript -e 'do shell script "pmset -b disablesleep 1 && pmset -a displaysleep 0" with administrator privileges'
 # 恢复默认：
 # /usr/bin/osascript -e 'do shell script "pmset -b disablesleep 0 && pmset -a displaysleep 2" with administrator privileges'
@@ -139,54 +280,14 @@ caffeinate -dims &
 ### 注意事项
 
 - **delay 3**（激活后）：必须足够长，确保微信完全前台化
-- **两次 Enter**：第一次提交搜索词，第二次选中第一个匹配结果。缺一不可
-- **Option+Down/Up**：从搜索结果区域导航到输入框，这是关键步骤
 - **tell process "WeChat"**：直接向微信进程发事件，不受窗口遮挡影响
 - 发送期间不要操作鼠标键盘
 - 消息通过剪贴板粘贴，会临时覆盖剪贴板内容
 - **发送前务必先运行 `caffeinate -u -t 2` 唤醒屏幕**
 
-### 发送多条消息
+### 发送后验证
 
-多条消息之间需要间隔，每条消息独立执行完整的搜索→发送流程：
-
-```bash
-# 消息之间间隔 5 秒
-for msg in "消息一" "消息二" "消息三"; do
-    osascript -e "
-    tell application \"WeChat\" to activate
-    delay 3
-    tell application \"System Events\"
-        tell process \"WeChat\"
-            set frontmost to true
-            delay 0.5
-            key code 53
-            delay 0.5
-            keystroke \"f\" using {command down}
-            delay 1
-            set the clipboard to \"TARGET_NAME\"
-            keystroke \"v\" using {command down}
-            delay 1.5
-            keystroke return
-            delay 2.5
-            keystroke return
-            delay 2
-            key code 125 using {option down}
-            key code 126 using {option down}
-            delay 0.5
-            set the clipboard to \"$msg\"
-            keystroke \"v\" using {command down}
-            delay 0.5
-            keystroke return
-        end tell
-    end tell"
-    sleep 5
-done
-```
-
-### 发送验证
-
-发送后用 wechat-cli 验证：
+发送后必须用 wechat-cli 确认消息到达正确目标：
 
 ```bash
 wechat-cli history "TARGET_NAME" --limit 3 --format text
